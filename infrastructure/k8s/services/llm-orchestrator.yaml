@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: llm-orchestrator-sa
+  namespace: sentinel
+  annotations:
+    # This GSA must have roles/aiplatform.user on the GCP project (ADR-006).
+    iam.gke.io/gcp-service-account: sentinel-llm-orchestrator@${GCP_PROJECT}.iam.gserviceaccount.com
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-orchestrator
+  namespace: sentinel
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm-orchestrator
+  template:
+    metadata:
+      labels:
+        app: llm-orchestrator
+    spec:
+      serviceAccountName: llm-orchestrator-sa
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: llm-orchestrator
+          image: us-central1-docker.pkg.dev/${GCP_PROJECT}/sentinel/llm-orchestrator:${IMAGE_TAG}
+          envFrom:
+            - configMapRef:
+                name: sentinel-config
+          env:
+            # Vertex AI / Gemini 2.5 Flash (ADR-005, ADR-006)
+            - name: LLM_PROVIDER
+              value: "vertex"
+            - name: LLM_MODEL_ID
+              value: "gemini-2.5-flash"
+            - name: VERTEX_LOCATION
+              value: "us-central1"
+            - name: LLM_MAX_TOKENS_PER_WINDOW
+              value: "500000"
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+---
+# Keep llm-orchestrator at 1–2 replicas: budget circuit-breaker is per-pod.
+# Phase 2: move budget state to a shared counter (Firestore or Redis) before scaling past 2.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: llm-orchestrator-hpa
+  namespace: sentinel
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: llm-orchestrator
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

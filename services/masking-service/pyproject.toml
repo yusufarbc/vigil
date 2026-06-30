@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.7",
     "google-cloud-pubsub>=2.21",
     "structlog>=24.2",
+    "elasticsearch[async]>=8.13",
 ]
 
 [tool.ruff]

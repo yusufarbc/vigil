@@ -1,0 +1,42 @@
+# Shared non-sensitive config for all Sentinel services.
+# Substitute ${GCP_PROJECT} and ${IMAGE_TAG} before applying:
+#   envsubst < configmap.yaml | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sentinel-config
+  namespace: sentinel
+data:
+  GCP_PROJECT: "${GCP_PROJECT}"
+
+  # Elasticsearch — ECK creates the service 'sentinel-es-http' in the sentinel namespace
+  ELASTIC_URL: "https://sentinel-es-http:9200"
+  ELASTIC_USER: "elastic"
+  ELASTIC_CA_CERTS: "/etc/sentinel/certs/ca.crt"
+
+  # Pub/Sub — leave PUBSUB_EMULATOR_HOST empty in production
+  PUBSUB_EMULATOR_HOST: ""
+  PUBSUB_PROJECT: "${GCP_PROJECT}"
+
+  # Topics (ADR-013)
+  ALERTS_TOPIC: "sentinel.alerts"
+  INCIDENTS_TOPIC: "sentinel.incidents"
+  MASKED_INCIDENTS_TOPIC: "sentinel.masked-incidents"
+  TRIAGE_DECISIONS_TOPIC: "sentinel.triage-decisions"
+  DLQ_TOPIC: "sentinel.dlq"
+
+  # Subscriptions
+  ALERTS_SUBSCRIPTION: "sentinel.alerts.gateway-sub"
+  INCIDENTS_SUBSCRIPTION: "sentinel.incidents.enrichment-sub"
+  MASKED_INCIDENTS_SUBSCRIPTION: "sentinel.masked-incidents.llm-sub"
+  TRIAGE_DECISIONS_SUBSCRIPTION: "sentinel.triage-decisions.case-sub"
+
+  # Inter-service HTTP
+  MASKING_SERVICE_URL: "http://masking-service:8001"
+  CASE_SERVICE_URL: "http://case-service:8002"
+
+  # Alert gateway
+  CORRELATION_THRESHOLD: "5"
+
+  # BFF
+  LISTEN_ADDR: ":8080"

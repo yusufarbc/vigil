@@ -294,6 +294,43 @@ GCS: Standard → Nearline → Coldline → Archive  [as it ages] cost drops
 
 ---
 
+## ADR-015 — masking-service reverse-map stored in Elasticsearch (NOT in-memory)
+
+**Status:** Accepted · **Date:** 2026-06-30
+
+**Context:** The original `Masker` class stored the incident→token reverse-map in process memory. With a single replica this works, but GKE HPA can scale the service to multiple pods; each pod would then hold a disjoint subset of the maps, breaking unmask calls routed to a different replica.
+
+**Alternatives considered:**
+- Single replica forever (no HPA) — rejected: masking-service is on the critical path for both enrichment (mask) and case-service (unmask); a single pod is a single point of failure.
+- Shared Redis / Memorystore — rejected: adds a third stateful system alongside Elasticsearch; more operational surface for no advantage given ES is already present.
+- Elasticsearch (existing cluster) — **chosen.**
+
+**Rationale:** ES is already the system of record. Adding one lightweight index (`sentinel-masking-maps`, ~100 bytes per incident) is trivial. Token generation is deterministic (`sha256(incident_id:kind:plaintext)`) so concurrent replicas compute the same token without coordination — upserts converge. Painless script + `retry_on_conflict=5` handles concurrent writes safely. Index uses `"enabled": false` on the map objects (stored, not indexed) to avoid dynamic-mapping issues.
+
+**Implementation:** `ElasticsearchMasker` in `services/masking-service/app/masker/masker.py`. The original in-memory `Masker` class is retained for unit tests and local dev (no ES required). `main.py` uses `ElasticsearchMasker` in production.
+
+**Risks / follow-ups:** Define a TTL / cleanup policy for the `sentinel-masking-maps` index (ILM or a periodic delete of maps older than the incident retention window).
+
+---
+
+## ADR-016 — GKE Autopilot (NOT standard node pool)
+
+**Status:** Accepted · **Date:** 2026-06-30
+
+**Context:** Two GKE cluster modes: Standard (user manages node pools, machine types, OS) and Autopilot (Google manages nodes; workloads define resource requests, GKE provisions accordingly).
+
+**Alternatives considered:**
+- GKE Standard — more control; allows privileged init containers (needed for ES `vm.max_map_count` sysctl).
+- GKE Autopilot — **chosen:** eliminates node management overhead; security posture is stronger (Autopilot blocks privileged containers and hostPath mounts by default); no node-pool sizing decisions for a two-person team.
+
+**Rationale:** Autopilot is the right default for a two-person team: no node sizing, no OS patch management, no manual cluster upgrades. The only friction is Elasticsearch's `vm.max_map_count` requirement — resolved by setting `node.store.allow_mmap: false` in the ECK manifest, which instructs ES to use `niofs` instead of `mmapfs`. Performance impact is acceptable for SOC log volumes at MVP scale.
+
+**Risks / follow-ups:**
+- `node.store.allow_mmap: false` → niofs is slower than mmapfs for large segment merges. Re-evaluate if indexing throughput becomes a bottleneck; at that point, migrate to a Standard node pool with a privileged DaemonSet to set the sysctl.
+- All custom service containers (`runAsNonRoot: true`, `seccompProfile: RuntimeDefault`) must comply with Autopilot's restricted pod security standard.
+
+---
+
 ## Open items to resolve (carry forward)
 
 - Confirm Vertex AI region + data-processing terms (ADR-006).

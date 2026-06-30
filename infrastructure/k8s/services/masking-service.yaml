@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: masking-service-sa
+  namespace: sentinel
+  annotations:
+    iam.gke.io/gcp-service-account: sentinel-masking@${GCP_PROJECT}.iam.gserviceaccount.com
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: masking-service
+  namespace: sentinel
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: masking-service
+  template:
+    metadata:
+      labels:
+        app: masking-service
+    spec:
+      serviceAccountName: masking-service-sa
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: masking-service
+          image: us-central1-docker.pkg.dev/${GCP_PROJECT}/sentinel/masking-service:${IMAGE_TAG}
+          envFrom:
+            - configMapRef:
+                name: sentinel-config
+          env:
+            - name: PORT
+              value: "8001"
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentinel-es-elastic-user
+                  key: elastic
+          ports:
+            - containerPort: 8001
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8001
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: es-certs
+              mountPath: /etc/sentinel/certs
+              readOnly: true
+      volumes:
+        - name: es-certs
+          secret:
+            secretName: sentinel-es-http-certs-public
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: masking-service
+  namespace: sentinel
+spec:
+  selector:
+    app: masking-service
+  ports:
+    - port: 8001
+      targetPort: 8001
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: masking-service-hpa
+  namespace: sentinel
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: masking-service
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

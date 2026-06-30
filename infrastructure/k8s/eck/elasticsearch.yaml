@@ -10,7 +10,10 @@ spec:
       count: 3    # 3-node cluster for master quorum (ADR-009)
       config:
         node.roles: ["master", "data", "ingest"]
-        node.store.allow_mmap: true
+        # GKE Autopilot does not allow privileged init containers, so mmap is disabled.
+        # This uses niofs instead of mmapfs — acceptable performance for SOC log volumes.
+        # On a standard GKE node pool you can re-enable mmap and add the sysctl init container.
+        node.store.allow_mmap: false
         xpack.license.self_generated.type: basic
       podTemplate:
         spec:
@@ -21,12 +24,6 @@ spec:
                     matchLabels:
                       elasticsearch.k8s.elastic.co/cluster-name: sentinel
                   topologyKey: kubernetes.io/hostname
-          initContainers:
-            - name: sysctl
-              securityContext:
-                privileged: true
-                runAsUser: 0
-              command: ["sh", "-c", "sysctl -w vm.max_map_count=262144"]
           containers:
             - name: elasticsearch
               resources:

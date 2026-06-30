@@ -4,14 +4,20 @@ PII pseudonymizer for Sentinel.
 Converts plaintext identifiers to stable tokens before any data leaves
 toward llm-orchestrator. Only this service holds the reverse-map.
 
-Guarantee: for the same incident_id, the same plaintext always maps to
-the same token — ensuring consistency within one LLM call.
+Two implementations:
+- Masker: in-memory, single-replica. Used by unit tests and local dev.
+- ElasticsearchMasker: ES-backed, multi-replica safe. Used in production (ADR-015).
+
+Guarantee: for the same incident_id, the same plaintext always maps to the same token
+because tokens are derived via sha256(incident_id:kind:plaintext) — deterministic
+across replicas, so concurrent upserts converge to the same value.
 """
 
 from __future__ import annotations
 
 import hashlib
 import threading
+import time
 from dataclasses import dataclass, field
 
 
@@ -94,3 +100,113 @@ class Masker:
         digest = hashlib.sha256(f"{incident_id}:{kind}:{plaintext}".encode()).hexdigest()
         prefix = cls._PREFIX.get(kind, "tok_")
         return f"{prefix}{digest[:6]}"
+
+
+# ---------------------------------------------------------------------------
+# ES-backed implementation (production)
+# ---------------------------------------------------------------------------
+
+_INDEX = "sentinel-masking-maps"
+
+# Painless script: idempotent upsert of a single token mapping.
+# Safe to retry under concurrent updates — converges to the same value.
+_UPSERT_SCRIPT = (
+    "if (ctx._source.plain_to_token == null) {"
+    "  ctx._source.plain_to_token = [:];"
+    "  ctx._source.token_to_plain = [:];"
+    "}"
+    "if (!ctx._source.plain_to_token.containsKey(params.key)) {"
+    "  ctx._source.plain_to_token[params.key] = params.token;"
+    "  ctx._source.token_to_plain[params.token] = params.plaintext;"
+    "}"
+)
+
+_INDEX_MAPPING = {
+    "mappings": {
+        "properties": {
+            "incident_id": {"type": "keyword"},
+            # Stored but not indexed — we only need exact retrieval, not search.
+            "plain_to_token": {"type": "object", "enabled": False},
+            "token_to_plain": {"type": "object", "enabled": False},
+            "created_at": {"type": "date", "format": "epoch_millis"},
+        }
+    }
+}
+
+
+class ElasticsearchMasker:
+    """
+    ES-backed masker for production. Multi-replica safe.
+
+    Token generation is deterministic (sha256), so concurrent replicas
+    computing the same token converge without coordination.
+    Upserts use a Painless script with retry_on_conflict=5 for safety.
+    """
+
+    _PREFIX = Masker._PREFIX  # reuse the same prefix table
+
+    def __init__(self, es: "AsyncElasticsearch") -> None:  # type: ignore[name-defined]
+        self._es = es
+
+    async def ensure_index(self) -> None:
+        """Create the masking-maps index if it doesn't exist. Call once at startup."""
+        exists = await self._es.indices.exists(index=_INDEX)
+        if not exists:
+            await self._es.indices.create(index=_INDEX, body=_INDEX_MAPPING)
+
+    @classmethod
+    def _make_token(cls, kind: str, incident_id: str, plaintext: str) -> str:
+        digest = hashlib.sha256(f"{incident_id}:{kind}:{plaintext}".encode()).hexdigest()
+        prefix = cls._PREFIX.get(kind, "tok_")
+        return f"{prefix}{digest[:6]}"
+
+    async def mask(self, incident_id: str, kind: str, plaintext: str) -> str:
+        if not plaintext:
+            return plaintext
+        key = f"{kind}:{plaintext}"
+        token = self._make_token(kind, incident_id, plaintext)
+        await self._es.update(
+            index=_INDEX,
+            id=incident_id,
+            body={
+                "script": {
+                    "source": _UPSERT_SCRIPT,
+                    "lang": "painless",
+                    "params": {"key": key, "token": token, "plaintext": plaintext},
+                },
+                "upsert": {
+                    "incident_id": incident_id,
+                    "plain_to_token": {key: token},
+                    "token_to_plain": {token: plaintext},
+                    "created_at": int(time.time() * 1000),
+                },
+            },
+            retry_on_conflict=5,
+        )
+        return token
+
+    async def unmask(self, incident_id: str, token: str) -> str | None:
+        from elasticsearch import NotFoundError  # lazy import keeps mock tests clean
+
+        try:
+            doc = await self._es.get(index=_INDEX, id=incident_id)
+            return doc["_source"].get("token_to_plain", {}).get(token)
+        except NotFoundError:
+            return None
+
+    async def get_reverse_map(self, incident_id: str) -> dict[str, str]:
+        from elasticsearch import NotFoundError
+
+        try:
+            doc = await self._es.get(index=_INDEX, id=incident_id)
+            return dict(doc["_source"].get("token_to_plain", {}))
+        except NotFoundError:
+            return {}
+
+    async def delete_map(self, incident_id: str) -> None:
+        from elasticsearch import NotFoundError
+
+        try:
+            await self._es.delete(index=_INDEX, id=incident_id)
+        except NotFoundError:
+            pass
