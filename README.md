@@ -1,4 +1,4 @@
-# Sentinel — AI-Assisted SOC/NOC Platform
+# vigil — AI-Assisted SOC/NOC Platform
 
 An open-source, AI-assisted Security & Network Operations platform built on the **free/Basic-licensed Elastic Stack**. Sentinel ingests telemetry, detects threats with Elastic SIEM detection rules (MITRE ATT&CK mapped), correlates alerts into incidents, and uses **Gemini 2.5 Flash via Vertex AI** as a triage assistant — never as an autonomous decision-maker.
 
