@@ -1,0 +1,28 @@
+apiVersion: kibana.k8s.elastic.co/v1
+kind: Kibana
+metadata:
+  name: sentinel
+  namespace: sentinel
+spec:
+  version: 8.13.0
+  count: 1
+  elasticsearchRef:
+    name: sentinel
+  config:
+    xpack.security.enabled: true
+    xpack.encryptedSavedObjects.encryptionKey: "${KIBANA_ENCRYPTION_KEY}"
+  podTemplate:
+    spec:
+      containers:
+        - name: kibana
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+  http:
+    tls:
+      selfSignedCertificate:
+        disabled: false

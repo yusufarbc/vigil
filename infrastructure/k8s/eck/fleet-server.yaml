@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fleet-server
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fleet-server
+subjects:
+- kind: ServiceAccount
+  name: fleet-server
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: agent.k8s.elastic.co/v1
+kind: Agent
+metadata:
+  name: fleet-server
+spec:
+  version: 8.12.0
+  kibanaRef:
+    name: quickstart
+  elasticsearchRef:
+    name: quickstart
+  mode: fleet
+  fleetServerEnabled: true
+  policyID: fleet-server-policy
+  deployment:
+    replicas: 1
+    podTemplate:
+      spec:
+        serviceAccountName: fleet-server
+        automountServiceAccountToken: true
+        securityContext:
+          runAsUser: 0 
+  http:
+    service:
+      spec:
+        type: LoadBalancer

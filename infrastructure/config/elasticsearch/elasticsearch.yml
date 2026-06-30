@@ -1,0 +1,28 @@
+cluster.name: "single-node"
+node.name: "node-1"
+
+path.data: /var/lib/elasticsearch
+path.logs: /var/log/elasticsearch
+
+# Sadece localhost
+network.host: 127.0.0.1
+http.port: 9200
+
+discovery.type: single-node
+
+xpack.security.enabled: true
+xpack.security.enrollment.enabled: true
+
+# HTTP (REST) TLS — enrollment token için PKCS#12 keystore şart
+xpack.security.http.ssl:
+  enabled: true
+  keystore.path: /etc/elasticsearch/certs/http.p12
+  # keystore.password: ""   # P12 şifresiz oluşturulduysa BU SATIRI EKLEME!
+
+# Transport TLS (node-2node; tek hostta da açık tut)
+xpack.security.transport.ssl:
+  enabled: true
+  certificate: /etc/elasticsearch/certs/transport.crt
+  key: /etc/elasticsearch/certs/transport.key
+  certificate_authorities: [ "/etc/elasticsearch/certs/ca.crt" ]
+  verification_mode: certificate

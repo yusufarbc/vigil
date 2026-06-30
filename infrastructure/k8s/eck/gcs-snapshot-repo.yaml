@@ -1,0 +1,43 @@
+# GCS snapshot repository registration (ADR-010).
+# Run once after cluster is up:
+#   PUT _snapshot/sentinel-gcs
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sentinel-gcs-snapshot-repo
+  namespace: sentinel
+data:
+  register.sh: |
+    #!/bin/bash
+    # Requires: GCS bucket sentinel-es-snapshots, Workload Identity with Storage Object Admin
+    curl -X PUT "https://${ES_HOST}/_snapshot/sentinel-gcs" \
+      -H "Content-Type: application/json" \
+      -u "${ES_USER}:${ES_PASSWORD}" \
+      --cacert /certs/ca.crt \
+      -d '{
+        "type": "gcs",
+        "settings": {
+          "bucket": "${GCS_BUCKET}",
+          "client": "default",
+          "base_path": "snapshots/"
+        }
+      }'
+---
+# SLM (Snapshot Lifecycle Management) policy — runs nightly at 01:00 UTC
+# Apply via Kibana Dev Tools:
+#   PUT _slm/policy/sentinel-gcs-snapshot-policy
+  slm-policy.json: |
+    {
+      "schedule": "0 0 1 * * ?",
+      "name": "<sentinel-snap-{now/d}>",
+      "repository": "sentinel-gcs",
+      "config": {
+        "indices": ["logs-*", ".alerts-security.alerts-*", "sentinel-cases-*"],
+        "include_global_state": false
+      },
+      "retention": {
+        "expire_after": "2y",
+        "min_count": 1,
+        "max_count": 730
+      }
+    }

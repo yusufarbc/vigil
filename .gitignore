@@ -1,0 +1,52 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*credentials*.json
+service-account*.json
+
+# Go
+services/*/bin/
+services/*/*.exe
+services/*/vendor/
+*.test
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Container / Compose
+docker-compose.override.yml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Elastic snapshots / data (local dev volumes)
+esdata/
+kibanadata/
+
+# Terraform / IaC
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Client config binaries — download separately, do not commit
+infrastructure/client-configs/**/*.msi
+infrastructure/client-configs/**/*.exe
+# Exception: sysmon XML config is text, keep it
+!infrastructure/client-configs/**/sysmon.xml

@@ -1,0 +1,8 @@
+module sentinel/alert-gateway
+
+go 1.22
+
+require (
+	cloud.google.com/go/pubsub v1.38.0
+	go.uber.org/zap v1.27.0
+)

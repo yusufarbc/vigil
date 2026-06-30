@@ -1,0 +1,52 @@
+{
+    "name": "Elastic-GenAI-SOC-Policy",
+    "description": "Policy for Windows Endpoints with Defender Integration",
+    "namespace": "default",
+    "monitoring_enabled": [
+        "logs",
+        "metrics"
+    ],
+    "package_policies": [
+        {
+            "name": "system-1",
+            "package": {
+                "name": "system"
+            }
+        },
+        {
+            "name": "windows-security-1",
+            "package": {
+                "name": "windows"
+            },
+            "inputs": [
+                {
+                    "type": "winlog",
+                    "enabled": true,
+                    "streams": [
+                        "security",
+                        "Microsoft-Windows-Sysmon/Operational",
+                        "Microsoft-Windows-PowerShell/Operational",
+                        "System"
+                    ],
+                    "event_id": "1,3,10,11,12,13,14,22,4624,4625,4688",
+                    "ignore_older": "72h"
+                }
+            ]
+        },
+        {
+            "name": "windows-defender-1",
+            "package": {
+                "name": "windows_defender"
+            },
+            "inputs": [
+                {
+                    "type": "winlog",
+                    "enabled": true,
+                    "streams": [
+                        "operational"
+                    ]
+                }
+            ]
+        }
+    ]
+}

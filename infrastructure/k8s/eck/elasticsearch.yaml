@@ -1,0 +1,66 @@
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: sentinel
+  namespace: sentinel
+spec:
+  version: 8.13.0
+  nodeSets:
+    - name: default
+      count: 3    # 3-node cluster for master quorum (ADR-009)
+      config:
+        node.roles: ["master", "data", "ingest"]
+        node.store.allow_mmap: true
+        xpack.license.self_generated.type: basic
+      podTemplate:
+        spec:
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      elasticsearch.k8s.elastic.co/cluster-name: sentinel
+                  topologyKey: kubernetes.io/hostname
+          initContainers:
+            - name: sysctl
+              securityContext:
+                privileged: true
+                runAsUser: 0
+              command: ["sh", "-c", "sysctl -w vm.max_map_count=262144"]
+          containers:
+            - name: elasticsearch
+              resources:
+                requests:
+                  memory: "2Gi"
+                  cpu: "500m"
+                limits:
+                  memory: "2Gi"    # JVM heap = half = 1 Gi
+                  cpu: "2000m"
+              env:
+                - name: ES_JAVA_OPTS
+                  value: "-Xms1g -Xmx1g"
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: standard-rwo    # GKE standard persistent disk
+            resources:
+              requests:
+                storage: 50Gi
+  # ILM hot-tier only; snapshots to GCS via ADR-010 repository
+  http:
+    tls:
+      selfSignedCertificate:
+        disabled: false
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sentinel-es-pdb
+  namespace: sentinel
+spec:
+  minAvailable: 2    # always keep 2/3 nodes (quorum preserved)
+  selector:
+    matchLabels:
+      elasticsearch.k8s.elastic.co/cluster-name: sentinel

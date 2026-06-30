@@ -1,0 +1,181 @@
+services:
+  # ---------------------------------------------------------------------------
+  # Infrastructure
+  # ---------------------------------------------------------------------------
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.license.self_generated.type=basic
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.0
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.security.enabled=false
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.13.0
+    volumes:
+      - ./infrastructure/config/logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
+      - ./infrastructure/config/logstash/pipelines:/usr/share/logstash/pipeline:ro
+      - ./infrastructure/config/logstash/conf.d:/usr/share/logstash/conf.d:ro
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - "LS_JAVA_OPTS=-Xms256m -Xmx256m"
+    ports:
+      - "5044:5044"   # Beats input
+      - "5514:5514"   # Syslog UDP
+      - "5515:5515"   # Syslog TCP
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command: >
+      gcloud beta emulators pubsub start
+      --host-port=0.0.0.0:8085
+      --project=sentinel-local
+    ports:
+      - "8085:8085"
+    environment:
+      - PUBSUB_PROJECT_ID=sentinel-local
+
+  # ---------------------------------------------------------------------------
+  # Sentinel microservices
+  # ---------------------------------------------------------------------------
+
+  detection-service:
+    build:
+      context: ./services/detection-service
+      dockerfile: Dockerfile
+    environment:
+      - ELASTIC_URL=http://elasticsearch:9200
+      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+      - PUBSUB_PROJECT=sentinel-local
+      - ALERTS_TOPIC=sentinel.alerts
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      pubsub-emulator:
+        condition: service_started
+    restart: unless-stopped
+
+  alert-gateway:
+    build:
+      context: ./services/alert-gateway
+      dockerfile: Dockerfile
+    environment:
+      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+      - PUBSUB_PROJECT=sentinel-local
+      - ALERTS_SUBSCRIPTION=sentinel.alerts.gateway-sub
+      - INCIDENTS_TOPIC=sentinel.incidents
+      - CORRELATION_THRESHOLD=5
+    depends_on:
+      pubsub-emulator:
+        condition: service_started
+    restart: unless-stopped
+
+  enrichment-service:
+    build:
+      context: ./services/enrichment-service
+      dockerfile: Dockerfile
+    environment:
+      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+      - PUBSUB_PROJECT=sentinel-local
+      - INCIDENTS_SUBSCRIPTION=sentinel.incidents.enrichment-sub
+      - MASKING_SERVICE_URL=http://masking-service:8001
+      - ELASTIC_URL=http://elasticsearch:9200
+    depends_on:
+      pubsub-emulator:
+        condition: service_started
+      masking-service:
+        condition: service_started
+    restart: unless-stopped
+
+  masking-service:
+    build:
+      context: ./services/masking-service
+      dockerfile: Dockerfile
+    environment:
+      - PORT=8001
+      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+      - PUBSUB_PROJECT=sentinel-local
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+  llm-orchestrator:
+    build:
+      context: ./services/llm-orchestrator
+      dockerfile: Dockerfile
+    environment:
+      - LLM_PROVIDER=mock
+      - LLM_MODEL_ID=gemini-2.5-flash
+      - LLM_MAX_TOKENS_PER_WINDOW=500000
+      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+      - PUBSUB_PROJECT=sentinel-local
+      - MASKED_INCIDENTS_SUBSCRIPTION=sentinel.masked-incidents.llm-sub
+      - TRIAGE_DECISIONS_TOPIC=sentinel.triage-decisions
+    depends_on:
+      pubsub-emulator:
+        condition: service_started
+    restart: unless-stopped
+
+  case-service:
+    build:
+      context: ./services/case-service
+      dockerfile: Dockerfile
+    environment:
+      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+      - PUBSUB_PROJECT=sentinel-local
+      - TRIAGE_DECISIONS_SUBSCRIPTION=sentinel.triage-decisions.case-sub
+      - ELASTIC_URL=http://elasticsearch:9200
+      - MASKING_SERVICE_URL=http://masking-service:8001
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      pubsub-emulator:
+        condition: service_started
+      masking-service:
+        condition: service_started
+    restart: unless-stopped
+
+  bff:
+    build:
+      context: ./services/bff
+      dockerfile: Dockerfile
+    environment:
+      - LISTEN_ADDR=:8080
+      - CASE_SERVICE_URL=http://case-service:8002
+      - ELASTIC_URL=http://elasticsearch:9200
+    ports:
+      - "8080:8080"
+    depends_on:
+      - case-service
+    restart: unless-stopped
+
+volumes:
+  esdata:
+
+networks:
+  default:
+    name: sentinel-net

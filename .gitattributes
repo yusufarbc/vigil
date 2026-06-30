@@ -1,0 +1,26 @@
+# Default: normalize line endings on commit
+* text=auto
+
+# Shell scripts MUST be LF (runs on Linux containers)
+*.sh text eol=lf
+Makefile text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.go text eol=lf
+*.py text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.conf text eol=lf
+
+# Windows scripts — keep CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+
+# Binaries — no conversion
+*.msi binary
+*.exe binary
+*.png binary
+*.jpg binary
+*.gif binary

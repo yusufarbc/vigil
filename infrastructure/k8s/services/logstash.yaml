@@ -1,0 +1,88 @@
+apiVersion: networking.k8s.io/v1
+kind: Service
+metadata:
+  name: logstash-service
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: logstash
+  ports:
+    - protocol: UDP
+      port: 514
+      targetPort: 514
+      nodePort: 30514
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      containers:
+        - name: logstash
+          image: docker.elastic.co/logstash/logstash:8.11.0
+          ports:
+            - containerPort: 514
+              protocol: UDP
+          volumeMounts:
+            - name: config-volume
+              mountPath: /usr/share/logstash/pipeline/
+            - name: ca-cert
+              mountPath: /etc/logstash/certs
+              readOnly: true
+          env:
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: quickstart-es-elastic-user
+                  key: elastic
+      volumes:
+        - name: config-volume
+          configMap:
+            name: logstash-config
+        - name: ca-cert
+          secret:
+            secretName: quickstart-es-http-certs-public
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-config
+  namespace: default
+data:
+  logstash.conf: |
+    input {
+      udp {
+        port => 514
+        type => "syslog"
+      }
+    }
+    filter {
+      if [type] == "syslog" {
+        grok {
+          match => { "message" => "%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:syslog_hostname} %{DATA:syslog_program}(?:\[%{POSINT:syslog_pid}\])?: %{GREEDYDATA:syslog_message}" }
+        }
+        date {
+          match => [ "syslog_timestamp", "MMM  d HH:mm:ss", "MMM dd HH:mm:ss" ]
+        }
+      }
+    }
+    output {
+      elasticsearch {
+        hosts => ["https://quickstart-es-http:9200"]
+        user => "elastic"
+        password => "${ELASTIC_PASSWORD}"
+        ssl_certificate_authorities => ["/etc/logstash/certs/ca.crt"]
+        index => "firewall-logs-%{+YYYY.MM.dd}"
+      }
+    }
