@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git remote *)",
+      "Bash(go version *)",
+      "Bash(go build *)",
+      "Bash(go env *)",
+      "Bash(curl -sS -m 10 -o /dev/null -w \"%{http_code}\\\\n\" https://proxy.golang.org/go.uber.org/zap/@v/list)",
+      "Bash(GOFLAGS=-mod=mod go mod tidy)",
+      "Bash(python -m pip show ruff)",
+      "Bash(pip install *)",
+      "Bash(python -m ruff check . --fix)",
+      "Bash(python -m ruff format --check .)",
+      "Bash(python -m ruff format --diff .)",
+      "Bash(python -m ruff format .)",
+      "Bash(python -m ruff check .)",
+      "Bash(python -m pip install --quiet \".[dev]\")",
+      "Bash(LLM_PROVIDER=mock python -m pytest tests/ -q)",
+      "Bash(go vet *)",
+      "Bash(go test *)",
+      "Bash(git commit -m ' *)",
+      "Bash(docker --version)",
+      "Bash(docker build *)",
+      "Bash(python -c ' *)"
+    ]
+  }
+}
