@@ -34,7 +34,7 @@ async def main() -> None:
 
     provider = _build_provider()
     budget = BudgetTracker(max_tokens_per_window=_MAX_TOKENS_PER_WINDOW)
-    orchestrator = LLMOrchestrator(provider=provider, budget_tracker=budget)
+    _orchestrator = LLMOrchestrator(provider=provider, budget_tracker=budget)
 
     loop = asyncio.get_running_loop()
     stop = asyncio.Event()

@@ -3,8 +3,6 @@
 import asyncio
 import json
 
-import pytest
-
 from app.provider.mock import MockLLMProvider
 from app.triage_schema import TriageDecision
 

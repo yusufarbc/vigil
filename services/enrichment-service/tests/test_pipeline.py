@@ -1,9 +1,7 @@
 """Unit tests for EnrichmentPipeline — no external dependencies."""
 
 import asyncio
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC, datetime
 
 from app.enricher import EnrichmentPipeline
 from app.models import Alert, Incident
@@ -12,7 +10,7 @@ from app.models import Alert, Incident
 def _make_incident() -> Incident:
     alert = Alert(
         id="a1",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         rule_id="WIN-001",
         rule_name="Office macro spawned cmd",
         severity="high",
@@ -23,8 +21,8 @@ def _make_incident() -> Incident:
     )
     return Incident(
         id="inc-001",
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
         alerts=[alert],
         alert_count=1,
         affected_hosts=["PC-01"],

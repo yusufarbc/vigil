@@ -47,7 +47,7 @@ Rules:
 
 
 class LLMOrchestrator:
-    def __init__(self, provider: LLMProvider, budget_tracker: "BudgetTracker") -> None:
+    def __init__(self, provider: LLMProvider, budget_tracker: BudgetTracker) -> None:
         self._provider = provider
         self._budget = budget_tracker
 

@@ -7,10 +7,7 @@ Logs: prompt_hash, full masked prompt, full response, model id+version,
 from __future__ import annotations
 
 import hashlib
-import json
-import time
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 
 import structlog
 
@@ -37,11 +34,11 @@ def log_call(
         incident_id=incident_id,
         model_id=model_id,
         prompt_hash=prompt_hash,
-        prompt=prompt_full,          # masked — no PII reaches here (ADR-004)
+        prompt=prompt_full,  # masked — no PII reaches here (ADR-004)
         response=response_content,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         latency_ms=round(latency_ms, 1),
         resulting_decision=resulting_decision,
-        ts=datetime.now(timezone.utc).isoformat(),
+        ts=datetime.now(UTC).isoformat(),
     )

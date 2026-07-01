@@ -136,7 +136,6 @@ func unique(ss []string) []string {
 }
 
 func newID() string {
-	b := make([]byte, 16)
 	h := sha256.New()
 	h.Write([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
 	return fmt.Sprintf("%x", h.Sum(nil)[:8])

@@ -8,7 +8,6 @@ Pub/Sub adapter and masking-service client are injected at startup from env vars
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import signal
 
@@ -43,7 +42,7 @@ async def handle_message(data: bytes, pipeline: EnrichmentPipeline) -> None:
 async def main() -> None:
     structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(20))
 
-    pipeline = EnrichmentPipeline(enrichers=[])  # Phase 2 adds GeoIP, TI, asset enrichers
+    _pipeline = EnrichmentPipeline(enrichers=[])  # Phase 2 adds GeoIP, TI, asset enrichers
 
     loop = asyncio.get_running_loop()
     stop = asyncio.Event()
