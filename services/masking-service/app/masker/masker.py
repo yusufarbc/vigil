@@ -19,6 +19,10 @@ import hashlib
 import threading
 import time
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from elasticsearch import AsyncElasticsearch
 
 
 @dataclass
@@ -145,7 +149,7 @@ class ElasticsearchMasker:
 
     _PREFIX = Masker._PREFIX  # reuse the same prefix table
 
-    def __init__(self, es: "AsyncElasticsearch") -> None:  # type: ignore[name-defined]
+    def __init__(self, es: AsyncElasticsearch) -> None:
         self._es = es
 
     async def ensure_index(self) -> None:

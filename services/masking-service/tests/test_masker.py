@@ -4,10 +4,10 @@ import pytest
 
 from app.masker import ElasticsearchMasker, Masker
 
-
 # ---------------------------------------------------------------------------
 # In-memory Masker (existing tests, unchanged)
 # ---------------------------------------------------------------------------
+
 
 def test_mask_returns_stable_token():
     m = Masker()
@@ -58,6 +58,7 @@ def test_empty_plaintext_passthrough():
 # ElasticsearchMasker — tested with an AsyncMock ES client
 # ---------------------------------------------------------------------------
 
+
 class _FakeES:
     """Minimal fake AsyncElasticsearch that stores docs in memory."""
 
@@ -80,12 +81,14 @@ class _FakeES:
 
     async def get(self, *, index: str, id: str) -> dict:
         from elasticsearch import NotFoundError
+
         if id not in self._docs:
             raise NotFoundError(404, {}, {})
         return {"_source": self._docs[id]}
 
     async def delete(self, *, index: str, id: str) -> None:
         from elasticsearch import NotFoundError
+
         if id not in self._docs:
             raise NotFoundError(404, {}, {})
         del self._docs[id]
